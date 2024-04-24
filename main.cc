@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <vector>
 
 #include <fstream>
 #include <sstream>
@@ -14,28 +15,25 @@
 
 #include "absl/types/span.h"
 
-#define MIN_SLOTS_ON_OBJECT 2
+#define MIN_SLOTS_ON_OBJECT 1
 
-#define TINY_VERSION
+int days = 6;
+int slots_per_day = 10;
+int slots_window_per_day = 7;
+int objects_type_a = 5;
+int objects_type_b = 5;
+int daily_views_of_object_type_a = 3;
+int daily_views_of_object_type_b = 2;
+int days_for_object_type_a = 1;
+int days_for_object_type_b = 2;
 
-#ifdef TINY_VERSION
-#define DAYS 5
-#define SLOTS_PER_DAY 10
-#define SLOTS_WINDOW_DER_DAY 4
-#define OBJECTS 10
-#define FILE_NAME "data/tiny_limits.txt"
-#else
-#define DAYS 180
-#define SLOTS_PER_DAY 90
-#define SLOTS_WINDOW_DER_DAY 20
-#define OBJECTS 361
-#define FILE_NAME "data/limits.txt"
-#endif
+int objects = objects_type_a + objects_type_b;
+int rows = days * slots_per_day;
+int cols = objects;
 
-#define ROWS (DAYS * SLOTS_PER_DAY)
-#define COLS OBJECTS
+std::string filename = "data/tiny_limits.txt";
 
-void fill_matrix_from_file(const std::string &filename, std::bitset<ROWS * COLS> &matrix)
+void fill_matrix_from_file(const std::string &filename, std::vector<bool> &matrix)
 {
     std::ifstream file(filename);
     if (!file.is_open())
@@ -46,21 +44,14 @@ void fill_matrix_from_file(const std::string &filename, std::bitset<ROWS * COLS>
     std::string line;
     int row = 0;
 
-    while (std::getline(file, line) && row < ROWS)
+    while (std::getline(file, line) && row < rows)
     {
         std::stringstream ss(line);
         std::string value;
         int col = 0;
-        while (std::getline(ss, value, ',') && col < COLS)
+        while (std::getline(ss, value, ',') && col < cols)
         {
-            if (std::stoi(value) == 1)
-            {
-                matrix.set(row * COLS + col);
-            }
-            else
-            {
-                matrix.reset(row * COLS + col);
-            }
+            matrix[row * cols + col] = (std::stoi(value) == 1);
             col++;
         }
         row++;
@@ -70,16 +61,16 @@ void fill_matrix_from_file(const std::string &filename, std::bitset<ROWS * COLS>
 
 bool checkSolution(operations_research::sat::CpSolverResponse response,
                    operations_research::sat::BoolVar *schedule,
-                   std::bitset<ROWS * COLS> matrix)
+                   std::vector<bool> &matrix)
 {
     // Can watch object if matrix[i][j] is 1
     bool cell;
-    for (int i = 0; i < ROWS; i++)
+    for (int i = 0; i < rows; i++)
     {
-        for (int j = 0; j < COLS; j++)
+        for (int j = 0; j < cols; j++)
         {
-            cell = SolutionBooleanValue(response, schedule[i * COLS + j]);
-            if (not matrix.test(i * COLS + j) and cell)
+            cell = SolutionBooleanValue(response, schedule[i * cols + j]);
+            if (not matrix[i * cols + j] and cell)
             {
                 std::cerr << "CANT WATCH THIS OBJECT IN THIS SLOTS" << std::endl;
                 std::cerr << "slot: " << i << " object: " << j << std::endl;
@@ -89,15 +80,18 @@ bool checkSolution(operations_research::sat::CpSolverResponse response,
     }
 
     // Can't watch more than 1 object in slot
-    std::bitset<ROWS> slots;
+    std::vector<bool> slots(rows);
     bool slot_is_busy = false;
-    for (int i = 0; i < ROWS; i++)
+    for (int i = 0; i < rows; i++)
     {
         slot_is_busy = false;
-        slots.reset(i);
-        for (int j = 0; j < COLS; j++)
+        slots[i] = false;
+        for (int j = 0; j < cols; j++)
         {
-            cell = SolutionBooleanValue(response, schedule[i * COLS + j]);
+            if (not matrix[i * cols + j]){
+                continue;
+            }
+            cell = SolutionBooleanValue(response, schedule[i * cols + j]);
             if (not cell)
             {
                 continue;
@@ -109,26 +103,25 @@ bool checkSolution(operations_research::sat::CpSolverResponse response,
                 return false;
             }
             slot_is_busy = true;
-            slots.set(i);
+            slots[i] = true;
         }
     }
 
     int left, rigth;
-    for (int day = 0; day < DAYS; day++)
+    for (int day = 0; day < days; day++)
     {
         left = 0;
         rigth = 0;
 
-        for (int i = SLOTS_WINDOW_DER_DAY + 1; i < SLOTS_PER_DAY; i++)
+        for (int i = slots_window_per_day + 1; i < slots_per_day; i++)
         {
-            rigth += slots.test(day * SLOTS_PER_DAY + i);
+            rigth += slots[day * slots_per_day + i];
         }
 
-        for (int shift = 0; shift < SLOTS_PER_DAY - SLOTS_WINDOW_DER_DAY - 1; shift++)
+        for (int shift = 0; shift < slots_per_day - slots_window_per_day - 1; shift++)
         {
-            left += slots.test(day * SLOTS_PER_DAY + shift);
-            //rigth -= slots.test(day * SLOTS_PER_DAY + shift); //
-            rigth -= slots.test(day * SLOTS_PER_DAY + shift + SLOTS_WINDOW_DER_DAY + 1);
+            left += slots[day * slots_per_day + shift];
+            rigth -= slots[day * slots_per_day + shift + slots_window_per_day + 1];
             if ((left > 0) and (rigth > 0))
             {
                 std::cerr << "WINDOW SIZE IS EXCEEDED" << std::endl;
@@ -143,12 +136,12 @@ bool checkSolution(operations_research::sat::CpSolverResponse response,
 
     // 1 object must have at least MIN_SLOTS_ON_OBJECT slots
     int slots_on_obj;
-    for (int j = 0; j < COLS; j++)
+    for (int j = 0; j < cols; j++)
     {
         slots_on_obj = 0;
-        for (int i = 0; i < ROWS; i++)
+        for (int i = 0; i < rows; i++)
         {
-            cell = SolutionBooleanValue(response, schedule[i * COLS + j]);
+            cell = SolutionBooleanValue(response, schedule[i * cols + j]);
             slots_on_obj += cell;
             if (slots_on_obj >= MIN_SLOTS_ON_OBJECT)
             {
@@ -176,86 +169,159 @@ namespace operations_research
         {
 
             // Load data from file
-            std::bitset<ROWS * COLS> matrix;
-            fill_matrix_from_file(FILE_NAME, matrix);
+            std::vector<bool> matrix(rows * cols);
+            fill_matrix_from_file(filename, matrix);
 
             CpModelBuilder cp_model;
 
-            BoolVar *schedule = new BoolVar[ROWS * COLS];
+            BoolVar *schedule = new BoolVar[rows * cols];
 
             // Can watch object if matrix[i][j] is 1
-            for (int i = 0; i < ROWS; i++)
+            for (int i = 0; i < rows; i++)
             {
-                for (int j = 0; j < COLS; j++)
+                for (int j = 0; j < cols; j++)
                 {
-                    if (matrix.test(i * COLS + j))
+                    if (matrix[i * cols + j])
                     {
-                        schedule[i * COLS + j] = cp_model.NewBoolVar();
+                        schedule[i * cols + j] = cp_model.NewBoolVar();
                     }
                     else
                     {
-                        schedule[i * COLS + j] = cp_model.FalseVar();
+                        schedule[i * cols + j] = cp_model.FalseVar();
                     }
                 }
             }
 
-            LinearExpr *slots = new LinearExpr[ROWS];
+            LinearExpr *slots = new LinearExpr[rows];
 
             LinearExpr only_one = LinearExpr(1);
 
             // Can't watch more than 1 object in slot
-            for (int i = 0; i < ROWS; i++)
+            for (int i = 0; i < rows; i++)
             {
-                LinearExpr slots_object_count(0);
-                for (int j = 0; j < COLS; j++)
+                LinearExpr slots_object_count;
+                for (int j = 0; j < cols; j++)
                 {
-                    slots_object_count += schedule[i * COLS + j];
+                    if (not matrix[i * cols + j]){
+                        continue;
+                    }
+                    slots_object_count += schedule[i * cols + j];
                 }
                 slots[i] = slots_object_count;
                 cp_model.AddLessOrEqual(slots_object_count, only_one);
             }
 
-            // Can use slots in window size SLOTS_WINDOW_DER_DAY
+
+            // Can use slots in window size slots_window_per_day
             LinearExpr sum;
-            for (int day = 0; day < DAYS; day++)
+            for (int day = 0; day < days; day++)
             {
-                for (int i = 0; i < SLOTS_PER_DAY - SLOTS_WINDOW_DER_DAY; i++)
+                for (int i = 0; i < slots_per_day - slots_window_per_day; i++)
                 {
-                    for (int j = i + SLOTS_WINDOW_DER_DAY; j < SLOTS_PER_DAY; j++)
+                    for (int j = i + slots_window_per_day; j < slots_per_day; j++)
                     {
-                        sum = slots[day * SLOTS_PER_DAY + i] + slots[day * SLOTS_PER_DAY + j];
-                        cp_model.AddLessOrEqual(sum, 1);
+                        sum = slots[day * slots_per_day + i] + slots[day * slots_per_day + j];
+                        cp_model.AddLessOrEqual(sum, only_one);
                     }
                 }
             }
 
-            // 1 object must have at least MIN_SLOTS_ON_OBJECT slots
-            for (int j = 0; j < COLS; j++)
+            LinearExpr *views_of_object_in_day = new LinearExpr[days * objects];
+            BoolVar *is_object_viewed_in_day = new BoolVar[days * objects];
+            LinearExpr *all_object_views_days = new LinearExpr[objects];
+
+            for (int i = 0; i < days; i++)
             {
-                LinearExpr object_slots_count(0);
-                for (int i = 0; i < ROWS; i++)
+                for (int j = 0; j < objects; j++)
                 {
-                    object_slots_count += schedule[i * COLS + j];
+                    is_object_viewed_in_day[i*objects + j] = cp_model.NewBoolVar();
                 }
-                LinearExpr minimum = LinearExpr(MIN_SLOTS_ON_OBJECT);
-                cp_model.AddGreaterOrEqual(object_slots_count, minimum);
+            }
+            
+            for (int object = 0; object < objects; object++)
+            {
+                all_object_views_days[object] = LinearExpr();
             }
 
-            // Solving part.
+            for (int day = 0; day < days; day++)
+            {
+                // Object type A control of daily_views_of_object_type_a
+                for (int object_a = 0; object_a < objects_type_a; object_a++)
+                {
+                    views_of_object_in_day[day * objects + object_a] = LinearExpr();
+                    for (int slot = 0; slot < slots_per_day; slot++)
+                    {
+                        int global_slot = day * slots_per_day + slot;
+                        if (not matrix[global_slot * objects + object_a])
+                        {
+                            continue;
+                        }
+                        views_of_object_in_day[day * objects + object_a] += schedule[global_slot * objects + object_a];
+                    }
+                    cp_model.AddEquality(
+                        daily_views_of_object_type_a * is_object_viewed_in_day[day * objects + object_a],
+                        views_of_object_in_day[day * objects + object_a]
+                    );
+                    all_object_views_days[object_a] += is_object_viewed_in_day[day * objects + object_a];
+                }
+                
+
+                //Object type B control of daily_views_of_object_type_b
+                for (int object_b = objects_type_a; object_b < objects; object_b++)
+                {
+                    views_of_object_in_day[day * objects + object_b] = LinearExpr();
+                    for (int slot = 0; slot < slots_per_day; slot++)
+                    {
+                        int global_slot = day * slots_per_day + slot;
+                        if (not matrix[global_slot * objects + object_b])
+                        {
+                            continue;
+                        }
+                        views_of_object_in_day[day * objects + object_b] += schedule[global_slot * objects + object_b];
+                    }
+                    cp_model.AddEquality(
+                        daily_views_of_object_type_b * is_object_viewed_in_day[day * objects + object_b],
+                        views_of_object_in_day[day * objects + object_b]
+                    );
+                    all_object_views_days[object_b] += is_object_viewed_in_day[day * objects + object_b];
+                }
+            }
+
+            //Objects type A days limit
+            LinearExpr days_for_obiect_type_a_lin_exp = LinearExpr(days_for_object_type_a);
+            for (int object_a = 0; object_a < objects_type_a; object_a++)
+            {
+                cp_model.AddEquality(
+                    all_object_views_days[object_a], 
+                    days_for_obiect_type_a_lin_exp
+                );
+            }
+
+            // Objects type B days limit
+            LinearExpr days_for_obiect_type_b_lin_exp = LinearExpr(days_for_object_type_b);
+            for (int object_b = objects_type_a; object_b < objects; object_b++)
+            {
+                cp_model.AddEquality(
+                    all_object_views_days[object_b],
+                    days_for_obiect_type_b_lin_exp
+                );
+            }
+
+            // Solving part
             const CpSolverResponse response = Solve(cp_model.Build());
 
             if (response.status() == CpSolverStatus::OPTIMAL ||
                 response.status() == CpSolverStatus::FEASIBLE)
             {
-                for (int i = 0; i < ROWS; i++)
+                for (int i = 0; i < rows; i++)
                 {
-                    if (i % SLOTS_PER_DAY == 0)
+                    if (i % slots_per_day == 0)
                     {
-                        std::cout << "Day " << i / SLOTS_PER_DAY << std::endl;
+                        std::cout << "Day " << i / slots_per_day << std::endl;
                     }
-                    for (int j = 0; j < COLS; j++)
+                    for (int j = 0; j < cols; j++)
                     {
-                        std::cout << (int)SolutionBooleanValue(response, schedule[i * COLS + j]) << " ";
+                        std::cout << " #"[(int)SolutionBooleanValue(response, schedule[i * cols + j])] << " ";
                     }
                     std::cout << std::endl;
                 }
