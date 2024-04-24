@@ -88,7 +88,8 @@ bool checkSolution(operations_research::sat::CpSolverResponse response,
         slots[i] = false;
         for (int j = 0; j < cols; j++)
         {
-            if (not matrix[i * cols + j]){
+            if (not matrix[i * cols + j])
+            {
                 continue;
             }
             cell = SolutionBooleanValue(response, schedule[i * cols + j]);
@@ -134,7 +135,83 @@ bool checkSolution(operations_research::sat::CpSolverResponse response,
         }
     }
 
+    int daily_views_limit;
+    int daily_views_of_object;
+    int *days_on_objects = new int[objects];
+    int days_on_object_limit;
+    int global_slot;
+
+    for (int object = 0; object < objects; object++)
+    {
+        days_on_objects[object] = 0;
+    }
+
+    for (int day = 0; day < days; day++)
+    {
+        for (int object = 0; object < objects; object++)
+        {
+            daily_views_of_object = 0;
+            for (int slot = 0; slot < slots_per_day; slot++)
+            {
+                global_slot = day * slots_per_day + slot;
+                cell = SolutionBooleanValue(response, schedule[global_slot * cols + object]);
+                daily_views_of_object += cell;
+            }
+            if (daily_views_of_object == 0)
+            {
+                continue;
+            }
+            if (object < objects_type_a)
+            {
+                daily_views_limit = daily_views_of_object_type_a;
+                days_on_object_limit = days_for_object_type_a;
+            }
+            else
+            {
+                daily_views_limit = daily_views_of_object_type_b;
+                days_on_object_limit = days_for_object_type_b;
+            }
+            if (daily_views_of_object == daily_views_limit)
+            {
+                days_on_objects[object] += 1;
+                if (days_on_objects[object] <= days_on_object_limit)
+                {
+                    continue;
+                }
+                std::cerr << "DAYS LIMIT IS EXCEEDED" << std::endl;
+                std::cerr << "object: " << object << " have " << days_on_objects[object]
+                          << " but limit is " << days_on_object_limit << std::endl;
+            }
+            std::cerr << "DAILY VIEWS INCORRECT COUNT" << std::endl;
+            std::cerr << "object: " << object << " have " << daily_views_of_object
+                      << " in day " << day << " but correct value is "
+                      << daily_views_limit << std::endl;
+
+        }
+    }
+
+    for (int object = 0; object < objects; object++)
+    {
+        if (object < objects_type_a)
+        {
+            days_on_object_limit = days_for_object_type_a;
+        }
+        else
+        {
+            days_on_object_limit = days_for_object_type_b;
+        }
+        if (days_on_objects[object] == days_on_object_limit)
+        {
+            continue;
+        }
+        std::cerr << "DAYS COUNT IS INCORRECT" << std::endl;
+        std::cerr << "object: " << object << " have " << days_on_objects[object]
+                  << " but needed " << days_on_object_limit << std::endl;
+
+    }
+
     // 1 object must have at least MIN_SLOTS_ON_OBJECT slots
+
     int slots_on_obj;
     for (int j = 0; j < cols; j++)
     {
@@ -202,7 +279,8 @@ namespace operations_research
                 LinearExpr slots_object_count;
                 for (int j = 0; j < cols; j++)
                 {
-                    if (not matrix[i * cols + j]){
+                    if (not matrix[i * cols + j])
+                    {
                         continue;
                     }
                     slots_object_count += schedule[i * cols + j];
@@ -210,7 +288,6 @@ namespace operations_research
                 slots[i] = slots_object_count;
                 cp_model.AddLessOrEqual(slots_object_count, only_one);
             }
-
 
             // Can use slots in window size slots_window_per_day
             LinearExpr sum;
@@ -234,76 +311,68 @@ namespace operations_research
             {
                 for (int j = 0; j < objects; j++)
                 {
-                    is_object_viewed_in_day[i*objects + j] = cp_model.NewBoolVar();
+                    is_object_viewed_in_day[i * objects + j] = cp_model.NewBoolVar();
                 }
             }
-            
+
             for (int object = 0; object < objects; object++)
             {
                 all_object_views_days[object] = LinearExpr();
             }
 
+            // Control of objects daily views
+            int daily_views;
             for (int day = 0; day < days; day++)
             {
-                // Object type A control of daily_views_of_object_type_a
-                for (int object_a = 0; object_a < objects_type_a; object_a++)
+                for (int object = 0; object < objects; object++)
                 {
-                    views_of_object_in_day[day * objects + object_a] = LinearExpr();
+                    views_of_object_in_day[day * objects + object] = LinearExpr();
                     for (int slot = 0; slot < slots_per_day; slot++)
                     {
                         int global_slot = day * slots_per_day + slot;
-                        if (not matrix[global_slot * objects + object_a])
+                        if (not matrix[global_slot * objects + object])
                         {
                             continue;
                         }
-                        views_of_object_in_day[day * objects + object_a] += schedule[global_slot * objects + object_a];
+                        views_of_object_in_day[day * objects + object] += schedule[global_slot * objects + object];
                     }
-                    cp_model.AddEquality(
-                        daily_views_of_object_type_a * is_object_viewed_in_day[day * objects + object_a],
-                        views_of_object_in_day[day * objects + object_a]
-                    );
-                    all_object_views_days[object_a] += is_object_viewed_in_day[day * objects + object_a];
-                }
-                
 
-                //Object type B control of daily_views_of_object_type_b
-                for (int object_b = objects_type_a; object_b < objects; object_b++)
-                {
-                    views_of_object_in_day[day * objects + object_b] = LinearExpr();
-                    for (int slot = 0; slot < slots_per_day; slot++)
+                    if (object < objects_type_a)
                     {
-                        int global_slot = day * slots_per_day + slot;
-                        if (not matrix[global_slot * objects + object_b])
-                        {
-                            continue;
-                        }
-                        views_of_object_in_day[day * objects + object_b] += schedule[global_slot * objects + object_b];
+                        daily_views = daily_views_of_object_type_a;
                     }
+                    else
+                    {
+                        daily_views = daily_views_of_object_type_b;
+                    }
+
                     cp_model.AddEquality(
-                        daily_views_of_object_type_b * is_object_viewed_in_day[day * objects + object_b],
-                        views_of_object_in_day[day * objects + object_b]
+                        daily_views * is_object_viewed_in_day[day * objects + object],
+                        views_of_object_in_day[day * objects + object]
                     );
-                    all_object_views_days[object_b] += is_object_viewed_in_day[day * objects + object_b];
+                    all_object_views_days[object] += is_object_viewed_in_day[day * objects + object];
                 }
             }
 
-            //Objects type A days limit
+            // Objects days limit
+            int days_for_object;
             LinearExpr days_for_obiect_type_a_lin_exp = LinearExpr(days_for_object_type_a);
-            for (int object_a = 0; object_a < objects_type_a; object_a++)
-            {
-                cp_model.AddEquality(
-                    all_object_views_days[object_a], 
-                    days_for_obiect_type_a_lin_exp
-                );
-            }
-
-            // Objects type B days limit
             LinearExpr days_for_obiect_type_b_lin_exp = LinearExpr(days_for_object_type_b);
-            for (int object_b = objects_type_a; object_b < objects; object_b++)
+            LinearExpr days_for_obiect_lin_exp;
+
+            for (int object = 0; object < objects; object++)
             {
+                if (object < objects_type_a)
+                {
+                    days_for_obiect_lin_exp = days_for_obiect_type_a_lin_exp;
+                }
+                else
+                {
+                    days_for_obiect_lin_exp = days_for_obiect_type_b_lin_exp;
+                }
                 cp_model.AddEquality(
-                    all_object_views_days[object_b],
-                    days_for_obiect_type_b_lin_exp
+                    all_object_views_days[object],
+                    days_for_obiect_lin_exp
                 );
             }
 
