@@ -15,20 +15,32 @@
 
 #include "absl/types/span.h"
 
+const std::string DAYS_KEY = "--days";
+const std::string SLOTS_KEY = "--slots";
+const std::string A_DAYS_KEY = "--a_days";
+const std::string B_DAYS_KEY = "--b_days";
+const std::string A_VIEWS_KEY = "--a_views";
+const std::string B_VIEWS_KEY = "--b_views";
+const std::string MATRIX_KEY = "--matrix";
+const std::string TYPES_KEY = "--types";
+
+const std::string DAYS_SHORT_KEY = "-d";
+const std::string SLOTS_SHORT_KEY = "-s";
+const std::string MATRIX_SHORT_KEY = "-m";
+const std::string TYPES_SHORT_KEY = "-t";
+
 int num_days = 6;
 int num_daily_slots = 10;
 int daily_slots_window_size = 7;
-int num_objects_type_a = 5;
-int num_objects_type_b = 5;
-int daily_views_requirement_type_a = 3;
-int daily_views_requirement_type_b = 2;
 int days_requirement_type_a = 1;
 int days_requirement_type_b = 2;
-
-int num_total_objects = num_objects_type_a + num_objects_type_b;
-int num_total_slots = num_days * num_daily_slots;
-
+int daily_views_requirement_type_a = 3;
+int daily_views_requirement_type_b = 2;
+int num_total_objects = 10;
 std::string availability_matrix_filename = "data/tiny_limits.txt";
+std::string objects_type_filename = "data/tiny_objtype.txt";
+
+int num_total_slots = num_days * num_daily_slots;
 
 void
 load_matrix_from_file(const std::string& availability_matrix_filename,
@@ -56,10 +68,28 @@ load_matrix_from_file(const std::string& availability_matrix_filename,
     file.close();
 }
 
+void
+load_vector_from_file(const std::string& objects_type_filename, std::vector<bool>& objects_type) {
+                      std::ifstream file(objects_type_filename);
+    if (!file.is_open()) {
+        std::cerr << "Can't open file" << std::endl;
+        return;
+    }
+    std::string line;
+    int index = 0;
+
+    while (std::getline(file, line) && index < objects_type.size()) {
+        objects_type[index] = (std::stoi(line) == 1);
+        index++;
+    }
+    file.close();
+}
+
 bool
 validate_solution(operations_research::sat::CpSolverResponse response,
                   operations_research::sat::BoolVar* schedule,
-                  std::vector<bool>& availability_matrix)
+                  std::vector<bool>& availability_matrix,
+                  std::vector<bool>& objects_type)
 {
     // Can watch object if availability_matrix[slot_index][object_index] is true
     bool is_object_viewed;
@@ -148,7 +178,7 @@ validate_solution(operations_research::sat::CpSolverResponse response,
             if (num_object_daily_views == 0) {
                 continue;
             }
-            if (object_index < num_objects_type_a) {
+            if (objects_type[object_index]) {
                 daily_views_requirement = daily_views_requirement_type_a;
                 days_requirement = days_requirement_type_a;
             } else {
@@ -173,7 +203,7 @@ validate_solution(operations_research::sat::CpSolverResponse response,
     }
 
     for (int object_index = 0; object_index < num_total_objects; object_index++) {
-        if (object_index < num_objects_type_a) {
+        if (objects_type[object_index]) {
             days_requirement = days_requirement_type_a;
         } else {
             days_requirement = days_requirement_type_b;
@@ -196,9 +226,11 @@ void
 generate_schedule()
 {
 
-    // Load data from file
+    // Load data from files
     std::vector<bool> availability_matrix(num_total_slots * num_total_objects);
     load_matrix_from_file(availability_matrix_filename, availability_matrix);
+    std::vector<bool> objects_type(num_total_objects);
+    load_vector_from_file(objects_type_filename, objects_type);
 
     CpModelBuilder cp_model;
 
@@ -275,7 +307,7 @@ generate_schedule()
                   schedule[global_slot_index * num_total_objects + object_index];
             }
 
-            if (object_index < num_objects_type_a) {
+            if (objects_type[object_index]) {
                 daily_views = daily_views_requirement_type_a;
             } else {
                 daily_views = daily_views_requirement_type_b;
@@ -295,7 +327,7 @@ generate_schedule()
     LinearExpr days_requirement_type_b_lin_exp = LinearExpr(days_requirement_type_b);
     LinearExpr days_requirement_lin_exp;
     for (int object_index = 0; object_index < num_total_objects; object_index++) {
-        if (object_index < num_objects_type_a) {
+        if (objects_type[object_index]) {
             days_requirement_lin_exp = days_requirement_type_a_lin_exp;
         } else {
             days_requirement_lin_exp = days_requirement_type_b_lin_exp;
@@ -322,7 +354,7 @@ generate_schedule()
             }
             std::cout << std::endl;
         }
-        LOG(INFO) << validate_solution(response, schedule, availability_matrix);
+        LOG(INFO) << validate_solution(response, schedule, availability_matrix, objects_type);
     } else {
         LOG(INFO) << "No solution found.";
     }
@@ -335,9 +367,94 @@ generate_schedule()
 } // namespace sat
 } // namespace operations_research
 
+// int num_days = 6;
+// int num_daily_slots = 10;
+// int daily_slots_window_size = 7;
+// int num_objects_type_a = 5;
+// int num_objects_type_b = 5;
+// int daily_views_requirement_type_a = 3;
+// int daily_views_requirement_type_b = 2;
+// int days_requirement_type_a = 1;
+// int days_requirement_type_b = 2;
+
 int
-main()
+main(int argc, char* argv[])
 {
+    for (int i = 2; i < argc; i++){
+        try {
+            std::string cur_key(argv[i]);
+            if ((cur_key == DAYS_KEY) || (cur_key == SHORT)){
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                num_days = std::stoi(argv[i]);
+            } else if ((cur_key == "--slots") || (cur_key == "-s")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                num_daily_slots = std::stoi(argv[i]);
+            } else if ((cur_key == "--objects") || (cur_key == "-o")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                num_total_objects = std::stoi(argv[i]);
+            } else if ((cur_key == "--a_views")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                daily_views_requirement_type_a = std::stoi(argv[i]);
+            } else if ((cur_key == "--b_views")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                daily_views_requirement_type_b = std::stoi(argv[i]);
+            } else if ((cur_key == "--a_days")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                days_requirement_type_a = std::stoi(argv[i]);
+            } else if ((cur_key == "--b_days")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                days_requirement_type_b = std::stoi(argv[i]);  
+            } else if ((cur_key == "--matix") || (cur_key == "-m")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                availability_matrix_filename = argv[i];
+            } else if ((cur_key == "--types") || (cur_key == "-t")) {
+                if (++i >= argc) {
+                    std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
+                    return 1;
+                }
+                objects_type_filename = argv[i];
+            } else {
+                std::cerr << "Unknown option '" << argv[i] << "'" << std::endl;
+                std::cerr << "Use --days (-d), --slots (-s), "
+                          << "--objects (-o), "
+                          << "--a_views, --b_views, "
+                          << "--a_days, --b_days, "
+                          << "--matrix (-m), --types (-t) "
+                          << std::endl;
+                return 1;
+            }
+        } catch (const std::invalid_argument& e) {
+            std::cerr << "Invalid argument, after flag: " << argv[i-1] << " expected integer, but found: " << argv[i] << std::endl;
+            return 1;
+        } catch (const std::out_of_range& e) {
+            std::cerr << "Argument out of range: " << argv[i] << std::endl;
+            return 1;
+        }
+    }
     operations_research::sat::generate_schedule();
     return EXIT_SUCCESS;
 }
