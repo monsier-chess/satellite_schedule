@@ -17,6 +17,7 @@
 
 const std::string DAYS_KEY = "--days";
 const std::string SLOTS_KEY = "--slots";
+const std::string OBJECTS_KEY = "--objects"; 
 const std::string A_DAYS_KEY = "--a_days";
 const std::string B_DAYS_KEY = "--b_days";
 const std::string A_VIEWS_KEY = "--a_views";
@@ -26,6 +27,7 @@ const std::string TYPES_KEY = "--types";
 
 const std::string DAYS_SHORT_KEY = "-d";
 const std::string SLOTS_SHORT_KEY = "-s";
+const std::string OBJECTS_SHORT_KEY = "-o";
 const std::string MATRIX_SHORT_KEY = "-m";
 const std::string TYPES_SHORT_KEY = "-t";
 
@@ -367,71 +369,62 @@ generate_schedule()
 } // namespace sat
 } // namespace operations_research
 
-// int num_days = 6;
-// int num_daily_slots = 10;
-// int daily_slots_window_size = 7;
-// int num_objects_type_a = 5;
-// int num_objects_type_b = 5;
-// int daily_views_requirement_type_a = 3;
-// int daily_views_requirement_type_b = 2;
-// int days_requirement_type_a = 1;
-// int days_requirement_type_b = 2;
-
 int
 main(int argc, char* argv[])
 {
-    for (int i = 2; i < argc; i++){
+    int i = 1;
+    while (i < argc){
         try {
             std::string cur_key(argv[i]);
-            if ((cur_key == DAYS_KEY) || (cur_key == SHORT)){
+            if ((cur_key == DAYS_KEY) || (cur_key == DAYS_SHORT_KEY)){
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 num_days = std::stoi(argv[i]);
-            } else if ((cur_key == "--slots") || (cur_key == "-s")) {
+            } else if ((cur_key == SLOTS_KEY) || (cur_key == SLOTS_SHORT_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 num_daily_slots = std::stoi(argv[i]);
-            } else if ((cur_key == "--objects") || (cur_key == "-o")) {
+            } else if ((cur_key == OBJECTS_KEY) || (cur_key == OBJECTS_SHORT_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 num_total_objects = std::stoi(argv[i]);
-            } else if ((cur_key == "--a_views")) {
+            } else if ((cur_key == A_VIEWS_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 daily_views_requirement_type_a = std::stoi(argv[i]);
-            } else if ((cur_key == "--b_views")) {
+            } else if ((cur_key == B_VIEWS_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 daily_views_requirement_type_b = std::stoi(argv[i]);
-            } else if ((cur_key == "--a_days")) {
+            } else if ((cur_key == A_DAYS_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 days_requirement_type_a = std::stoi(argv[i]);
-            } else if ((cur_key == "--b_days")) {
+            } else if ((cur_key == B_DAYS_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 days_requirement_type_b = std::stoi(argv[i]);  
-            } else if ((cur_key == "--matix") || (cur_key == "-m")) {
+            } else if ((cur_key == MATRIX_KEY) || (cur_key == MATRIX_SHORT_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
                 }
                 availability_matrix_filename = argv[i];
-            } else if ((cur_key == "--types") || (cur_key == "-t")) {
+            } else if ((cur_key == TYPES_KEY) || (cur_key == TYPES_SHORT_KEY)) {
                 if (++i >= argc) {
                     std::cerr << "Flag " << argv[i-1] << " used without argument" << std::endl;
                     return 1;
@@ -454,7 +447,9 @@ main(int argc, char* argv[])
             std::cerr << "Argument out of range: " << argv[i] << std::endl;
             return 1;
         }
+        i++;
     }
+    num_total_slots = num_days * num_daily_slots;
     operations_research::sat::generate_schedule();
     return EXIT_SUCCESS;
 }
