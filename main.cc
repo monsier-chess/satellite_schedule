@@ -432,12 +432,14 @@ main(int argc, char* argv[])
                 objects_type_filename = argv[i];
             } else {
                 std::cerr << "Unknown option '" << argv[i] << "'" << std::endl;
-                std::cerr << "Use --days (-d), --slots (-s), "
-                          << "--objects (-o), "
-                          << "--a_views, --b_views, "
-                          << "--a_days, --b_days, "
-                          << "--matrix (-m), --types (-t) "
-                          << std::endl;
+                std::cerr << "Use " << DAYS_KEY << " (" << DAYS_SHORT_KEY << "), "
+                                   << SLOTS_KEY << " (" << SLOTS_SHORT_KEY <<"), "
+                                   << OBJECTS_KEY << " (" << OBJECTS_SHORT_KEY <<"), "
+                                   << A_VIEWS_KEY << ", " << B_VIEWS_KEY << ", "
+                                   << A_DAYS_KEY << ", " << B_DAYS_KEY << ", " 
+                                   << MATRIX_KEY << " (" << MATRIX_SHORT_KEY <<"), "
+                                   << TYPES_KEY << " (" << TYPES_SHORT_KEY <<")"
+                                   << std::endl;
                 return 1;
             }
         } catch (const std::invalid_argument& e) {
