@@ -332,8 +332,8 @@ generate_schedule()
     LinearExpr* total_object_days = new LinearExpr[num_objects];
 
     for (int day_index = 0; day_index < num_days; day_index++) {
-        for (int slot_index = 0; slot_index < num_objects; slot_index++) {
-            is_object_viewed_in_day[day_index * num_objects + slot_index] =
+        for (int object_index = 0; object_index < num_objects; object_index++) {
+            is_object_viewed_in_day[day_index * num_objects + object_index] =
               cp_model.NewBoolVar();
         }
     }
@@ -382,13 +382,13 @@ generate_schedule()
 
     // Geometry progression
     if ((days_requirement_type_b > 1) and (progression_ratio > 1)){
-        bool flag;
         int current_progression_element;
         int current_day_shift;
         int max_day_shift = pow(progression_ratio, days_requirement_type_b - 1) / (progression_ratio - 1);
         LinearExpr* object_days_prexif_sum = new LinearExpr[num_days * num_objects];
+
+        // Prefix sum
         for (int day_index = 1; day_index < num_days - max_day_shift; day_index++){
-            flag = false;
             for (int object_index = 0; object_index < num_objects; object_index++) {
                 if (objects_type[object_index]) {
                     continue;
@@ -396,17 +396,40 @@ generate_schedule()
                 object_days_prexif_sum[day_index * num_objects + object_index] = 
                     object_days_prexif_sum[(day_index - 1) * num_objects + object_index]
                     + is_object_viewed_in_day[(day_index - 1) * num_objects + object_index];
+            }
+        }
+
+        // Checking for compliance with the geometric progression
+        for (int day_index = 0; day_index < num_days - max_day_shift; day_index++){
+            for (int object_index = 0; object_index < num_objects; object_index++) {
+                if (objects_type[object_index]) {
+                    continue;
+                }
                 current_progression_element = 1;
                 current_day_shift = 0;
                 for (int progression_index = 0; progression_index < days_requirement_type_b - 1; progression_index++){
                     current_day_shift += current_progression_element;
+                    
+                    // w_{i+shift} + prefix sum_{i} >= w_{i}
                     cp_model.AddGreaterOrEqual(
                         is_object_viewed_in_day[(day_index + current_day_shift) * num_objects + object_index]
                         + object_days_prexif_sum[day_index * num_objects + object_index],
-                        is_object_viewed_in_day[(day_index * num_objects + object_index)]
+                        is_object_viewed_in_day[day_index * num_objects + object_index]
                     );
+                    
                     current_progression_element *= progression_ratio;
                 }
+            }
+        }
+
+        // Сan not use the last few days as the beginning of a sequence
+        for (int day_index = num_days - max_day_shift; day_index < num_days; day_index++){
+            for (int object_index = 0; object_index < num_objects; object_index++) {
+                if (objects_type[object_index]) {
+                    continue;
+                }
+                // Realy bad realization, but will work
+                cp_model.AddEquality(is_object_viewed_in_day[day_index * num_objects + object_index], 0);
             }
         }
     }
